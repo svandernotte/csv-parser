@@ -23,6 +23,53 @@ namespace csv {
             return ret.str();
         }
 
+        std::vector<ParseFlags> make_flags(const CSVFormat& format) {
+            /** Create a vector v where each index i corresponds to the
+            *  ASCII number for a character and, v[i + 128] labels it according to
+            *  the CSVReader::ParseFlags enum
+            */
+
+            std::vector<ParseFlags> ret;
+            for (int i = -128; i < 128; i++) {
+                char ch = char(i);
+
+                if (ch == format.delim)
+                    ret.push_back(DELIMITER);
+                else if (ch == format.quote_char)
+                    ret.push_back(QUOTE);
+                else if (ch == '\r' || ch == '\n')
+                    ret.push_back(NEWLINE);
+                else
+                    ret.push_back(NOT_SPECIAL);
+            }
+
+            return ret;
+        }
+
+        std::vector<size_t> flag_mapper_base(
+            const std::vector<ParseFlags>& parse_flags, std::string_view in) {
+            /** Get the position of every potentially significant character */
+            std::vector<size_t> ret;
+            for (size_t i = 0; i < in.length(); i++) {
+                if (parse_flags[in[i] + 128] > NOT_SPECIAL)
+                    ret.push_back(i);
+            }
+            return ret;
+        }
+
+        std::vector<size_t> flag_mapper(
+            const std::vector<ParseFlags>& parse_flags, std::string_view in) {
+            /** Get the position of every potentially significant character */
+            size_t num_threads = std::max((size_t)0, (size_t)in.length()/10000);
+
+            std::vector<size_t> ret;
+            for (size_t i = 0; i < in.length(); i++) {
+                if (parse_flags[in[i] + 128] > NOT_SPECIAL)
+                    ret.push_back(i);
+            }
+            return ret;
+        }
+
         //
         // CSVGuesser
         //
@@ -129,29 +176,6 @@ namespace csv {
         internals::CSVGuesser guesser(filename);
         guesser.guess_delim();
         return { guesser.delim, '"', guesser.header_row };
-    }
-
-    std::vector<CSVReader::ParseFlags> CSVReader::make_flags() const {
-        /** Create a vector v where each index i corresponds to the
-         *  ASCII number for a character and, v[i + 128] labels it according to
-         *  the CSVReader::ParseFlags enum
-         */
-
-        std::vector<ParseFlags> ret;
-        for (int i = -128; i < 128; i++) {
-            char ch = char(i);
-
-            if (ch == this->delimiter)
-                ret.push_back(DELIMITER);
-            else if (ch == this->quote_char)
-                ret.push_back(QUOTE);
-            else if (ch == '\r' || ch == '\n')
-                ret.push_back(NEWLINE);
-            else
-                ret.push_back(NOT_SPECIAL);
-        }
-
-        return ret;
     }
 
     void CSVReader::bad_row_handler(std::vector<std::string> record) {
@@ -312,7 +336,7 @@ namespace csv {
     }
 
     void CSVReader::feed(std::unique_ptr<std::string>&& buff) {
-        this->feed(std::string_view(buff->c_str()));
+        this->feed(*buff);
     }
 
     void CSVReader::feed(std::string_view in) {
@@ -321,24 +345,78 @@ namespace csv {
          *  **Note**: end_feed() should be called after the last string
          */
 
-        if (parse_flags.empty()) parse_flags = this->make_flags();
+        if (parse_flags.empty()) parse_flags = internals::make_flags(this->get_format());
 
-        for (this->c_pos = 0; c_pos < in.size(); c_pos++) {
-            const char& ch = in[c_pos];
-            switch (this->parse_flags[ch + 128]) {
-            case NOT_SPECIAL:
-                this->record_buffer += ch;
-                this->n_pos++;
-                break;
-            case DELIMITER:
-                this->process_possible_delim(in);
-                break;
-            case NEWLINE:
-                this->process_newline(in);
-                break;
-            default: // Quote
-                this->process_quote(in);
-                break;
+        auto sig_chars = internals::flag_mapper(parse_flags, in);
+        bool quote_escape = false;
+        size_t current_field_start = 0;
+
+        for (auto it = sig_chars.begin(); it != sig_chars.end(); ) {
+            auto pos = *it;
+            auto flag = this->parse_flags[in[pos] + 128];
+            size_t field_size = pos - current_field_start;
+            it++;
+
+            if (!quote_escape) {
+                switch (flag) {
+                case DELIMITER:
+                    this->record_buffer += in.substr(current_field_start, field_size);
+                    this->split_buffer.push_back(this->record_buffer.size());
+                    current_field_start = pos + 1;
+                    break;
+                case NEWLINE:
+                    this->record_buffer += in.substr(current_field_start, field_size);
+                    this->write_record();
+
+                    // Case: Carriage Return Line Feed or any other pairs of delimiters
+                    if (it != sig_chars.end() &&
+                        (this->parse_flags[in[*it] + 128] == NEWLINE)) {
+                        it++;
+                        current_field_start = pos + 2;
+                    }
+                    else
+                        current_field_start = pos + 1;
+                    break;
+                default: // Quote
+                    // Note: Does not currently check if quote is in a valid position, i.e. after a delimiter or newline
+                    quote_escape = true;
+                    current_field_start = pos + 1;
+                }
+            }
+            else {
+                if (flag == QUOTE) {
+                    size_t next_ch_pos = *it;
+                    auto next_ch = this->parse_flags[in[next_ch_pos] + 128];
+
+                    if (next_ch == NEWLINE || next_ch == DELIMITER) {
+                        // End quote escape
+                        quote_escape = false;
+                        this->record_buffer += in.substr(current_field_start, field_size);
+                        current_field_start = pos + 1;
+                    }
+                    else if (next_ch == QUOTE) { // Escaped quote
+                        if (next_ch_pos == pos + 1) { // Double quote
+                            it++;
+                            this->record_buffer += in.substr(current_field_start, field_size + 1);
+                            current_field_start = pos + 2;
+                        }
+                        else {
+                            // Single unescaped quote (not strictly valid)
+                            if (!strict) {
+                                this->record_buffer += in.substr(current_field_start, field_size + 1);
+                                current_field_start = pos + 1;
+                            }
+                            else {
+                                // TODO: Add line number
+                                throw std::runtime_error("Unescaped single quote around");
+                            }
+                        }
+                    }
+                }
+                else { // Treat non-quote characters as regular characters
+                    this->record_buffer += in.substr(current_field_start, field_size + 1);
+                    current_field_start = pos + 1;
+                }
             }
         }
     }
@@ -350,76 +428,12 @@ namespace csv {
         this->write_record();
     }
 
-    void CSVReader::process_possible_delim(std::string_view sv) {
-        /** Process a delimiter character and determine if it is a field
-        *  separator
-        */
-
-        if (!this->quote_escape) // Make a new field
-            this->split_buffer.push_back(this->n_pos);
-        else { // Treat as a regular character
-            this->record_buffer += sv[c_pos];
-            this->n_pos++;
-        }
-    }
-
-    void CSVReader::process_newline(std::string_view sv) {
-        /** Process a newline character and determine if it is a record
-        *  separator
-        */
-        if (!this->quote_escape) {
-            // Case: Carriage Return Line Feed, Carriage Return, or Line Feed
-            // => End of record -> Write record
-            if ((sv[c_pos] == '\r') && (sv[c_pos + 1] == '\n'))
-                ++c_pos;
-            this->write_record();
-        }
-        else { // Treat as a regular character
-            this->record_buffer += sv[c_pos];
-            this->n_pos++;
-        }
-    }
-
-    void CSVReader::process_quote(std::string_view sv) {
-        /** Determine if the usage of a quote is valid or fix it */
-        if (this->quote_escape) {
-            auto next_ch = this->parse_flags[sv[c_pos + 1] + 128];
-            if (next_ch == DELIMITER || next_ch == NEWLINE) {
-                // Case: End of field
-                this->quote_escape = false;
-            }
-            else {
-                this->record_buffer += sv[c_pos];
-                this->n_pos++;
-
-                if (next_ch == QUOTE)
-                    ++c_pos;  // Case: Two consecutive quotes
-                else if (this->strict)
-                    throw std::runtime_error("Unescaped single quote around line " +
-                        std::to_string(this->correct_rows) + " near:\n" +
-                        std::string(sv.substr(c_pos, 100)));
-            }
-        }
-        else {
-            // Case: Previous character was delimiter
-            // Don't deref past beginning
-            if (c_pos) {
-                auto prev_ch = this->parse_flags[sv[c_pos - 1] + 128];
-                if (prev_ch == DELIMITER || prev_ch == NEWLINE)
-                    this->quote_escape = true;
-            }
-        }
-    }
-
     void CSVReader::write_record() {
         /** Push the current row into a queue if it is the right length.
          *  Drop it otherwise.
          */
 
         size_t col_names_size = this->col_names->size();
-        this->min_row_len = std::min(this->min_row_len, this->record_buffer.size());
-        this->n_pos = 0;
-        this->quote_escape = false;  // Unset all flags
         auto row = CSVRow(
             std::move(this->record_buffer),
             std::move(this->split_buffer),
@@ -445,14 +459,6 @@ namespace csv {
             this->col_names = std::make_shared<internals::ColNames>(
                 std::vector<std::string>(row));
         } // else: Ignore rows before header row
-
-        this->record_buffer = "";
-        if (this->record_buffer.capacity() < size_t(this->min_row_len * 1.5))
-            record_buffer.reserve(size_t(this->min_row_len * 1.5));
-
-        this->split_buffer = {};
-        if (this->split_buffer.capacity() < col_names_size)
-            split_buffer.reserve(col_names_size);
 
         this->row_num++;
     }

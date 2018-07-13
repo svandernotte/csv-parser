@@ -11,45 +11,31 @@ using std::vector;
 using std::string;
 
 //
-// guess_delim()
+// flag_mapper()
 //
-TEST_CASE("col_pos() Test", "[test_col_pos]") {
-    int pos = get_col_pos(
-        "./tests/data/real_data/2015_StateDepartment.csv",
-        "Entity Type");
-    REQUIRE(pos == 1);
-}
 
-TEST_CASE("guess_delim() Test - Pipe", "[test_guess_pipe]") {
-    CSVFormat format = guess_format(
-        "./tests/data/real_data/2009PowerStatus.txt");
-    REQUIRE(format.delim == '|');
-    REQUIRE(format.header == 0);
-}
+TEST_CASE("flag_mapper() Test", "[test_flag_mapper]") {
+    using namespace internals;
 
-TEST_CASE("guess_delim() Test - Semi-Colon", "[test_guess_scolon]") {
-    CSVFormat format = guess_format(
-        "./tests/data/real_data/YEAR07_CBSA_NAC3.txt");
-    REQUIRE(format.delim == ';');
-    REQUIRE(format.header == 0);
-}
+    std::string rows = "A,B,C\r\n"
+        "123,\"234,345\",456\r\n";
 
-TEST_CASE("guess_delim() Test - CSV with Comments", "[test_guess_comment]") {
-    CSVFormat format = guess_format(
-        "./tests/data/fake_data/ints_comments.csv");
-    REQUIRE(format.delim == ',');
-    REQUIRE(format.header == 5);
-}
+    auto actual = flag_mapper(make_flags(DEFAULT_CSV), std::string_view(rows));
+    std::vector<size_t> expected = {
+        1, // DELIMITER
+        3, // DELIMITER
+        5, // NEWLINE
+        6, // NEWLINE
+        10, // DELIMITER
+        11, // QUOTE
+        15, // DELIMITER
+        19, // QUOTE
+        20, // DELIMITER
+        24, // NEWLINE
+        25 // NEWLINE
+    };
 
-// get_file_info()
-TEST_CASE("get_file_info() Test", "[test_file_info]") {
-    CSVFileInfo info = get_file_info(
-        "./tests/data/real_data/2009PowerStatus.txt");
-        
-    REQUIRE(info.delim == '|');
-    REQUIRE(info.n_rows == 37960); // Can confirm with Excel
-    REQUIRE(info.n_cols == 3);
-    REQUIRE(info.col_names == vector<string>({"ReportDt", "Unit", "Power"}));
+    REQUIRE(actual == expected);
 }
 
 // Test Main Functions

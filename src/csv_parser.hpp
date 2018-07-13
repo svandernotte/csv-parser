@@ -35,6 +35,17 @@ namespace csv {
     class CSVRow;
     using CSVCollection = std::deque<CSVRow>;
 
+    /**  @typedef ParseFlags
+    *   @brief   An enum used for describing the significance of each character
+    *            with respect to CSV parsing
+    */
+    enum ParseFlags {
+        NOT_SPECIAL,
+        QUOTE,
+        DELIMITER,
+        NEWLINE
+    };
+
     /** 
      *  @brief Stores information about how to parse a CSV file
      *
@@ -74,6 +85,10 @@ namespace csv {
         bool is_equal(double a, double b, double epsilon = 0.001);
         std::string type_name(const DataType& dtype);
         std::string format_row(const std::vector<std::string>& row, const std::string& delim = ", ");
+        std::vector<ParseFlags> make_flags(const CSVFormat&);
+        std::vector<size_t> flag_mapper(
+            const std::vector<ParseFlags>&,
+            std::string_view);
     }
 
     /** @name Global Constants */
@@ -202,28 +217,15 @@ namespace csv {
              * @{
              */
 
-            /**  @typedef ParseFlags
-             *   @brief   An enum used for describing the significance of each character
-             *            with respect to CSV parsing
-             */
-            enum ParseFlags {
-                NOT_SPECIAL,
-                QUOTE,
-                DELIMITER,
-                NEWLINE
-            };
-
-            std::vector<CSVReader::ParseFlags> make_flags() const;
-
-            std::string record_buffer = ""; /**<
+            std::string record_buffer; /**<
                 @brief Buffer for current row being parsed */
 
             std::vector<size_t> split_buffer; /**<
                 @brief Positions where current row is split */
-
-            size_t min_row_len = (size_t)INFINITY; /**<
-                @brief Shortest row seen so far; used to determine how much memory
-                       to allocate for new strings */
+            
+            std::shared_ptr<std::string> current_string = nullptr;
+            size_t current_sv_begin = 0;
+            size_t current_sv_end = 0;
 
             std::deque<CSVRow> records; /**< @brief Queue of parsed CSV rows */
             inline bool eof() { return !(this->infile); };
@@ -233,9 +235,6 @@ namespace csv {
              *  These methods are called by feed().
             */
             ///@{
-            void process_possible_delim(std::string_view);
-            void process_quote(std::string_view);
-            void process_newline(std::string_view);
             void write_record();
             virtual void bad_row_handler(std::vector<std::string>);
             ///@}
@@ -247,15 +246,9 @@ namespace csv {
             int header_row;                /**< @brief Line number of the header row (zero-indexed) */
             bool strict = false;           /**< @brief Strictness of parser */
 
-            std::vector<CSVReader::ParseFlags> parse_flags; /**< @brief
+            std::vector<ParseFlags> parse_flags; /**< @brief
             A table where the (i + 128)th slot gives the ParseFlags for ASCII character i */
             ///@}
-
-            /** @name Parser State */
-            ///@{
-            bool quote_escape = false;     /**< @brief Are we currently in a quote escaped field? */
-            size_t c_pos = 0;              /**< @brief Position in current string of parser */
-            size_t n_pos = 0;              /**< @brief Position in new string (record_buffer) of parser */
 
             /** <@brief Pointer to a object containing column information
             */

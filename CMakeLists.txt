@@ -22,12 +22,13 @@ set(SOURCES
 set(TEST_SOURCES
 	${TEST_DIR}/catch.hpp
 	${TEST_DIR}/main.cpp
-	${TEST_DIR}/test_csv_iterator.cpp
-	${TEST_DIR}/test_csv_row.cpp
-	${TEST_DIR}/test_data_type.cpp
-	${TEST_DIR}/test_csv_stat.cpp
+	#${TEST_DIR}/test_csv_iterator.cpp
+	#${TEST_DIR}/test_csv_row.cpp
+	#${TEST_DIR}/test_data_type.cpp
+	#${TEST_DIR}/test_csv_stat.cpp
 	${TEST_DIR}/test_read_csv.cpp
-	${TEST_DIR}/test_write_csv.cpp
+	#${TEST_DIR}/test_guess_delim.cpp
+	#${TEST_DIR}/test_write_csv.cpp
 )
 
 include_directories(${SOURCE_DIR})
