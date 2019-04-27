@@ -3,6 +3,8 @@ project(csv_parser)
 
 set(CMAKE_CXX_STANDARD 17)
 
+add_subdirectory(benchmarks)
+
 if (MSVC)
 	# Make Visual Studio report accurate C++ version
 	# See: https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
