@@ -15,7 +15,7 @@ matrix:
           sources: ['ubuntu-toolchain-r-test']
           packages: ['g++-8']
     - os: linux
-      env: STD=c++17
+      env: STD=c++11
       compiler: clang
 dist: trusty
 sudo: required
