@@ -22,9 +22,9 @@ sudo: required
 language:
   - cpp
 script:
+  - $CXX --version;
   - make run_csv_test
   - if [ "$MAIN_BUILD" == "true" ]; then
-        $CXX --version;
         make code_cov;
         make valgrind;
     fi;
