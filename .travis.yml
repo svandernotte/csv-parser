@@ -14,8 +14,9 @@ matrix:
         apt:
           sources: ['ubuntu-toolchain-r-test']
           packages: ['g++-8']
-    #- os: linux
-    #  env: CXX=clang++
+    - os: linux
+      env: STD=c++17
+      compiler: clang
 dist: trusty
 sudo: required
 language:
