@@ -27,7 +27,9 @@ namespace csv {
 
     /** @name Utility Functions */
     ///@{
-    std::unordered_map<std::string, DataType> csv_data_types(const std::string&);
+    std::unordered_map<std::string, DataType> csv_data_types(
+        csv::string_view filename,
+        const CSVFormat format = CSVFormat::GUESS_CSV);
     CSVFileInfo get_file_info(const std::string& filename);
     CSVGuessResult guess_format(csv::string_view filename,
         const std::vector<char>& delims = { ',', '|', '\t', ';', '^', '~' });

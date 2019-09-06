@@ -6,7 +6,7 @@
 #include "csv_stat.hpp"
 
 namespace csv {
-    CSVStat::CSVStat(std::string filename, CSVFormat format) :
+    CSVStat::CSVStat(csv::string_view filename, CSVFormat format) :
         CSVReader(filename, format) {
         /** Lazily calculate statistics for a potentially large file. Once this constructor
          *  is called, CSVStat will process the entire file iteratively. Once finished,
@@ -26,7 +26,7 @@ namespace csv {
         this->calc();
     }
 
-    /** @brief Return current means */
+    /** Return current means */
     std::vector<long double> CSVStat::get_mean() const {
         std::vector<long double> ret;        
         for (size_t i = 0; i < this->col_names->size(); i++) {
@@ -35,7 +35,7 @@ namespace csv {
         return ret;
     }
 
-    /** @brief Return current variances */
+    /** Return current variances */
     std::vector<long double> CSVStat::get_variance() const {
         std::vector<long double> ret;        
         for (size_t i = 0; i < this->col_names->size(); i++) {
@@ -44,7 +44,7 @@ namespace csv {
         return ret;
     }
 
-    /** @brief Return current mins */
+    /** Return current mins */
     std::vector<long double> CSVStat::get_mins() const {
         std::vector<long double> ret;        
         for (size_t i = 0; i < this->col_names->size(); i++) {
@@ -53,7 +53,7 @@ namespace csv {
         return ret;
     }
 
-    /** @brief Return current maxes */
+    /** Return current maxes */
     std::vector<long double> CSVStat::get_maxes() const {
         std::vector<long double> ret;        
         for (size_t i = 0; i < this->col_names->size(); i++) {
@@ -62,7 +62,7 @@ namespace csv {
         return ret;
     }
 
-    /** @brief Get counts for each column */
+    /** Get counts for each column */
     std::vector<CSVStat::FreqCount> CSVStat::get_counts() const {
         std::vector<FreqCount> ret;
         for (size_t i = 0; i < this->col_names->size(); i++) {
@@ -71,7 +71,7 @@ namespace csv {
         return ret;
     }
 
-    /** @brief Get data type counts for each column */
+    /** Get data type counts for each column */
     std::vector<CSVStat::TypeCount> CSVStat::get_dtypes() const {
         std::vector<TypeCount> ret;        
         for (size_t i = 0; i < this->col_names->size(); i++) {
@@ -209,37 +209,46 @@ namespace csv {
         }
     }
 
-    /** @brief Useful for uploading CSV files to SQL databases.
+    /** Useful for uploading CSV files to SQL databases.
      *
      *  Return a data type for each column such that every value in a column can be
      *  converted to the corresponding data type without data loss.
+     *
      *  @param[in]  filename The CSV file
+     *  @param[in]  format   The format of the CSV file
      *
      *  \return A mapping of column names to csv::DataType enums
      */
-    std::unordered_map<std::string, DataType> csv_data_types(const std::string& filename) {
+    std::unordered_map<std::string, DataType> csv_data_types(
+        csv::string_view filename, const CSVFormat format) {
         CSVStat stat(filename);
         std::unordered_map<std::string, DataType> csv_dtypes;
 
         auto col_names = stat.get_col_names();
         auto temp = stat.get_dtypes();
 
+        // An ordered vector of data types to iterate through.
+        // For each column, the type of that column is the first
+        // data type with a non-zero number of occurrences.
+        std::vector<DataType> dtypes = {
+            CSV_STRING,
+            CSV_INT64,
+            CSV_INT32,
+            CSV_INT16,
+            CSV_INT8,
+            CSV_DOUBLE
+        };
+
         for (size_t i = 0; i < stat.get_col_names().size(); i++) {
             auto& col = temp[i];
             auto& col_name = col_names[i];
 
-            if (col[CSV_STRING])
-                csv_dtypes[col_name] = CSV_STRING;
-            else if (col[CSV_INT64])
-                csv_dtypes[col_name] = CSV_INT64;
-            else if (col[CSV_INT32])
-                csv_dtypes[col_name] = CSV_INT32;
-            else if (col[CSV_INT16])
-                csv_dtypes[col_name] = CSV_INT16;
-            else if (col[CSV_INT8])
-                csv_dtypes[col_name] = CSV_INT8;
-            else
-                csv_dtypes[col_name] = CSV_DOUBLE;
+            for (DataType type : dtypes) {
+                if (col[type]) {
+                    csv_dtypes[col_name] = type;
+                    continue;
+                }
+            }
         }
 
         return csv_dtypes;

@@ -12,6 +12,8 @@ target_sources(csv
 		csv_row.hpp
 		csv_row.cpp
 		csv_row_json.cpp
+        csv_sql.cpp
+        csv_sql.hpp
 		csv_stat.cpp
 		csv_stat.hpp
 		csv_utility.cpp
