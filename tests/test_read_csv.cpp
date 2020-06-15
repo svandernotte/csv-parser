@@ -300,6 +300,37 @@ TEST_CASE("Test Variable Row Length Handling", "[read_csv_var_len]") {
     }
 }
 
+TEST_CASE("Test Reading without a Header", "[read_csv_no_header]") {
+
+    CSVFormat format;
+    format.column_names(std::vector<std::string>())
+        .variable_columns(csv::VariableColumnPolicy::KEEP);
+
+    SECTION("Basic Test Case") {
+        string csv_string("123,234,345\r\n");
+
+        auto rows = parse(csv_string, format);
+
+        CSVRow row;
+        rows.read_row(row);
+        REQUIRE(row[0].get<>() == "123");
+        REQUIRE(row[1].get<>() == "234");
+        REQUIRE(row[2].get<>() == "345");
+    }
+
+    SECTION("Test Case 2") {
+        format.quote('\"');
+        string csv_string("\"234\n,345\",456\r\n");
+
+        auto rows = parse(csv_string, format);
+
+        CSVRow row;
+        rows.read_row(row);
+        REQUIRE(row[0].get<>() == "234\n,345");
+        REQUIRE(row[1].get<>() == "456");
+    }
+}
+
 TEST_CASE("Test read_row() CSVField - Memory", "[read_row_csvf2]") {
     CSVFormat format;
     format.column_names({ "A", "B" });

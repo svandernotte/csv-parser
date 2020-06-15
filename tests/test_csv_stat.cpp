@@ -13,17 +13,22 @@ TEST_CASE("Calculating Statistics from Direct Input", "[read_csv_stat_direct]" )
     }
     
     // Expected results
-    CSVFormat format;
+    Calculations _mins;
+
+    StatsOptions format;
     format.column_names({ "A", "B", "C" });
+    format.add_callback(csv::min_max, _mins);
 
     CSVStat reader(format);
     reader.feed(int_list);
     reader.end_feed();
 
+
     std::vector<long double> means = { 50.5, 50.5, 50.5 };
     std::vector<long double> mins = { 1, 1, 1 };
     std::vector<long double> maxes = { 100, 100, 100 };
 
+    REQUIRE(_mins[0] == mins[0]);
     REQUIRE( reader.get_mins() == mins );
     REQUIRE( reader.get_maxes() == maxes );
     REQUIRE( reader.get_mean() == means );

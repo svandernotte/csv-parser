@@ -6,8 +6,10 @@
 #include "csv_stat.hpp"
 
 namespace csv {
-    CSV_INLINE CSVStat::CSVStat(csv::string_view filename, CSVFormat format) :
+    CSV_INLINE CSVStat::CSVStat(csv::string_view filename, StatsOptions format) :
         CSVReader(filename, format) {
+
+
         /** Lazily calculate statistics for a potentially large file. Once this constructor
          *  is called, CSVStat will process the entire file iteratively. Once finished,
          *  methods like get_mean(), get_counts(), etc... can be used to retrieve statistics.
@@ -92,6 +94,10 @@ namespace csv {
             n.push_back(0);
         }
 
+        for (auto& [callback, container] : this->callbacks) {
+            container.set_col_names(this->get_col_names());
+        }
+
         std::vector<std::thread> pool;
 
         // Start threads
@@ -121,6 +127,11 @@ namespace csv {
                     this->count(current_field, i);
 
                 this->dtype(current_field, i);
+
+                // Run callbacks
+                for (auto& [callback, container] : this->callbacks) {
+                    callback(current_field, container, i);
+                }
 
                 // Numeric Stuff
                 if (current_field.is_num()) {
